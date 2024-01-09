@@ -1,6 +1,7 @@
 from datetime import datetime
 from collections import UserDict
-import json
+import pickle
+
 
 
 class Field:
@@ -150,15 +151,18 @@ class Record:
 
 
 class AddressBook(UserDict):
-    def __init__(self):
+    def __init__(self, file_path="address_book.pkl"):
         super().__init__()
         self.records_per_page = 3
         self.current_record = 0
+        self.file_path = file_path
+        self.load_from_file()
 
 
     def add_record(self, record: Record):
         if self.data.get(record.name.value, "") == "":
             self.data[record.name.value] = record
+            self.save_to_file()
         return self
 
 
@@ -167,8 +171,34 @@ class AddressBook(UserDict):
 
 
     def delete(self, name: str):
-        self.data.pop(name, None)
+        if name in self.data:
+            self.data.pop(name, None)
+            self.save_to_file()
         return self
+    
+
+    def save_to_file(self):
+        with open(self.file_path, "wb") as file:
+            pickle.dump(self.data, file)
+
+
+    def load_from_file(self):
+        try:
+            with open(self.file_path, "rb") as file:
+                self.data = pickle.load(file)
+        except FileNotFoundError:
+            pass  # Ігнорує, якщо файл ще не існує
+
+
+    def search(self, query):
+        results = []
+        for record in self.data.values():
+            if (
+                query.lower() in record.name.value.lower()
+                or any(query in phone.value for phone in record.phones)
+            ):
+                results.append(record)
+        return results
 
 
     def iterator(self, batch_size=None):
@@ -178,38 +208,9 @@ class AddressBook(UserDict):
             yield records[i:i + batch_size]
 
 
-    def save_to_file(self, filename="address_book.json"):
-        with open(filename, 'w') as file:
-            data = {
-                'records_per_page': self.records_per_page,
-                'current_record': self.current_record,
-                'data': {name: record.__dict__ for name, record in self.data.items()}
-            }
-            json.dump(data, file)
-
-
-    def load_from_file(self, filename="address_book.json"):
-        try:
-            with open(filename, 'r') as file:
-                data = json.load(file)
-                self.records_per_page = data['records_per_page']
-                self.current_record = data['current_record']
-                self.data = {name: Record(**record_data) for name, record_data in data['data'].items()}
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass  # Ігнорує, якщо файл не існує або пошкоджений
-
-
-    def search(self, term):
-        term = term.lower()
-        results = []
-        for record in self.data.values():
-            if term in record.name.value.lower() or any(term in phone.value for phone in record.phones):
-                results.append(record)
-        return results
-    
-
 def main():
-    # Завантажує існуючу адресну книгу з файлу
+
+    # Створення нового адресного запису
     book = AddressBook()
 
     # Створення запису для John
@@ -246,19 +247,18 @@ def main():
                 print("--------- Press 'Enter' to continue ---------")
                 _ = input()
 
-    
-    book.save_to_file()
-    book.load_from_file()
 
-    # Пошук контактів
-    search_term = input("Enter search term: ")
-    search_results = book.search(search_term)
+    # Функція пошуку
+    search_query = input("Enter a name or phone number to search: ")
+    search_results = book.search(search_query)
+
+
     if search_results:
-        print("Search results:")
+        print("Search Results:")
         for result in search_results:
             print(result)
     else:
-        print("No matching results.")
+        print("No matching results found.")
 
 
 if __name__ == "__main__":
